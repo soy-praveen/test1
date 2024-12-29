@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Telegram User Info</title>
+    <title>VIC Airdrop</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
@@ -13,107 +13,175 @@
             margin: 0 auto;
             padding: 20px;
             background: #f5f5f5;
+            text-align: center;
         }
+        .loader {
+            font-size: 18px;
+            margin-top: 50px;
+        }
+        .loader span {
+            display: inline-block;
+            animation: blink 1s infinite;
+        }
+        .loader span:nth-child(2) { animation-delay: 0.2s; }
+        .loader span:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes blink {
+            50% { opacity: 0.5; }
+        }
+
+        .airdrop-container {
+            display: none;
+            margin-top: 30px;
+        }
+
         .info-card {
             background: white;
             border-radius: 10px;
             padding: 20px;
-            margin: 10px 0;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            margin: 20px 0;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
         }
-        .field {
-            margin: 10px 0;
-            padding: 10px;
-            border-bottom: 1px solid #eee;
-        }
-        .field-name {
-            font-weight: bold;
-            color: #333;
-        }
-        .field-value {
-            color: #666;
-            word-break: break-all;
-        }
-        #userPhoto {
+
+        .profile-photo {
             width: 100px;
             height: 100px;
             border-radius: 50%;
+            margin: 10px auto;
+        }
+
+        .details, .tasks, .referrals {
             margin: 10px 0;
+        }
+
+        .referral-link {
+            font-size: 14px;
+            color: blue;
+            word-break: break-word;
         }
     </style>
 </head>
 <body>
-    <div class="info-card">
-        <h2>Telegram User Information</h2>
-        <img id="userPhoto" alt="User Photo">
-        <div id="userData"></div>
+    <div class="loader">
+        <span>•</span><span>•</span><span>•</span>
+        <p id="loading-text">Initializing...</p>
+    </div>
+
+    <div class="airdrop-container">
+        <div class="info-card">
+            <h2>Welcome, <span id="username"></span>!</h2>
+            <img id="profilePhoto" class="profile-photo" alt="User Photo">
+            <p>Allocated Airdrop: <strong><span id="airdrops"></span> VIC's</strong></p>
+        </div>
+        <div class="tasks info-card">
+            <h3>Tasks</h3>
+            <p>Coming Soon</p>
+        </div>
+        <div class="referrals info-card">
+            <h3>Referrals</h3>
+            <p>Referrals Count: <span id="referralCount">0</span></p>
+            <p>Your Referral Link:</p>
+            <p class="referral-link" id="referralLink"></p>
+        </div>
     </div>
 
     <script>
         let tg = window.Telegram.WebApp;
-        
-        function displayUserData() {
-            const userData = document.getElementById('userData');
-            const user = tg.initDataUnsafe.user;
-            const initData = tg.initData;
-            
-            // Display user photo if available
-            if (user?.photo_url) {
-                document.getElementById('userPhoto').src = user.photo_url;
-            } else {
-                document.getElementById('userPhoto').style.display = 'none';
+        const database = JSON.parse(localStorage.getItem('database')) || {};
+
+        function saveUserToDatabase(user, airdrop) {
+            if (!database[user.id]) {
+                database[user.id] = {
+                    username: user.username,
+                    firstName: user.first_name,
+                    lastName: user.last_name,
+                    airdrop,
+                    referrals: 0
+                };
+                localStorage.setItem('database', JSON.stringify(database));
             }
-
-            // Function to add a field
-            function addField(name, value) {
-                if (value !== undefined && value !== null) {
-                    const field = document.createElement('div');
-                    field.className = 'field';
-                    field.innerHTML = `
-                        <div class="field-name">${name}:</div>
-                        <div class="field-value">${value}</div>
-                    `;
-                    userData.appendChild(field);
-                }
-            }
-
-            // User basic info
-            addField('User ID', user?.id);
-            addField('First Name', user?.first_name);
-            addField('Last Name', user?.last_name);
-            addField('Username', user?.username);
-            addField('Language Code', user?.language_code);
-            addField('Is Premium', user?.is_premium);
-
-            // Platform info
-            addField('Platform', tg.platform);
-            addField('Version', tg.version);
-            addField('Theme Color', tg.themeParams.bg_color);
-            addField('Text Color', tg.themeParams.text_color);
-            addField('Hint Color', tg.themeParams.hint_color);
-            addField('Link Color', tg.themeParams.link_color);
-            addField('Button Color', tg.themeParams.button_color);
-            addField('Button Text Color', tg.themeParams.button_text_color);
-
-            // Viewport info
-            
-            // Display IP using a third-party service
-            fetch('https://api.ipify.org?format=json')
-                .then(response => response.json())
-                .then(data => {
-                    addField('IP Address', data.ip);
-                })
-                .catch(error => {
-                    addField('IP Address', 'Unable to fetch IP');
-                });
         }
 
-        // Ensure Telegram WebApp is ready
-        tg.ready();
-        
-        // Initialize the app
-        tg.expand();
-        displayUserData();
+        function calculateAirdrop(user, ip) {
+            let airdrop = 50; // Base VIC's
+            if (user.is_premium) airdrop += 30;
+            if (user.username) airdrop += 20;
+            if (ip.startsWith("192")) airdrop += 10; // Example logic for IP
+            return airdrop;
+        }
+
+        function updateReferralData(userId) {
+            let referrals = Object.values(database).filter(user => user.referrer === userId).length;
+            document.getElementById('referralCount').textContent = referrals;
+        }
+
+        function showLoader(message) {
+            $('#loading-text').text(message);
+        }
+
+        function displayAirdropPage(user, airdrop) {
+            $('#username').text(user.first_name || user.username);
+            if (user.photo_url) {
+                $('#profilePhoto').attr('src', user.photo_url);
+            } else {
+                $('#profilePhoto').hide();
+            }
+            $('#airdrops').text(airdrop);
+
+            // Generate referral link
+            const referralLink = `https://t.me/YourBotUsername?start=${user.id}`;
+            $('#referralLink').text(referralLink);
+
+            updateReferralData(user.id);
+            $('.loader').hide();
+            $('.airdrop-container').fadeIn();
+        }
+
+        function startLoadingProcess(user) {
+            const steps = [
+                { message: "Checking Telegram activity...", action: () => {} },
+                { message: "Checking join date...", action: () => {} },
+                { message: "Checking premium status...", action: () => {} },
+                { message: "Checking IP address...", action: () => fetch('https://api.ipify.org?format=json').then(res => res.json()) }
+            ];
+
+            let airdrop = 0;
+            let ip = null;
+
+            (function loadStep(index) {
+                if (index >= steps.length) {
+                    airdrop = calculateAirdrop(user, ip);
+                    saveUserToDatabase(user, airdrop);
+                    displayAirdropPage(user, airdrop);
+                    return;
+                }
+                const step = steps[index];
+                showLoader(step.message);
+                setTimeout(() => {
+                    if (step.action) {
+                        step.action().then(result => {
+                            if (result?.ip) ip = result.ip;
+                        }).finally(() => loadStep(index + 1));
+                    } else {
+                        loadStep(index + 1);
+                    }
+                }, 3000);
+            })(0);
+        }
+
+        function init() {
+            tg.ready();
+            const user = tg.initDataUnsafe?.user;
+            if (!user) return alert("User data not available!");
+
+            if (database[user.id]) {
+                displayAirdropPage(user, database[user.id].airdrop);
+            } else {
+                startLoadingProcess(user);
+            }
+        }
+
+        init();
     </script>
 </body>
 </html>
